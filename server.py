@@ -15,7 +15,7 @@ app = FastAPI()
 mcp_server = Server("Coffee-Recommender")
 TIMEOUT_SECONDS = 15
 
-# [보안 설정] PlayMCP가 접속할 수 있도록 허용 (CORS)
+# [보안 설정] PlayMCP 접속 허용
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -24,8 +24,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# [핵심] GET(연결)과 POST(전송)를 이어주는 '전역 연결 고리'
-# 봇(단일 인스턴스) 환경이므로 전역 변수로 스트림 입구를 관리합니다.
+# [연결 고리] 봇 환경을 위한 전역 스트림 입구
 global_writer = None
 
 # --- [2. 도구(Tool) 정의] ---
@@ -93,7 +92,7 @@ async def handle_call_tool(
 
     raise ValueError(f"Unknown tool: {name}")
 
-# --- [4. 수동 배관 작업 (Wiring) - 에러 원천 차단] ---
+# --- [4. 수동 배관 작업 (Wiring)] ---
 
 @app.get("/")
 async def handle_root():
@@ -101,22 +100,16 @@ async def handle_root():
 
 @app.get("/sse")
 async def handle_sse(request: Request):
-    """MCP 연결 요청 처리 (GET) - 듣기 모드"""
     global global_writer
     
-    # 1. 서버와 통신할 파이프(Stream) 직접 생성
-    # client_read, client_write: 클라이언트 -> 서버 (POST 데이터 이동 통로)
-    # server_read, server_write: 서버 -> 클라이언트 (SSE 이벤트 이동 통로)
+    # 파이프 생성
     client_write, client_read = create_memory_object_stream(10)
     server_write, server_read = create_memory_object_stream(10)
     
-    # 2. POST 요청이 오면 데이터를 넣을 입구를 전역 변수에 저장
     global_writer = client_write
 
-    # 3. 백그라운드에서 MCP 서버 실행 (통신 시작)
     async def run_mcp_server():
         try:
-            # 여기서 server.run을 직접 돌립니다. (process_request 같은거 안 씀)
             await mcp_server.run(
                 client_read, 
                 server_write, 
@@ -127,42 +120,44 @@ async def handle_sse(request: Request):
 
     asyncio.create_task(run_mcp_server())
 
-    # 4. SSE 이벤트 생성기
     async def event_generator():
-        # PlayMCP에게 "여기로 데이터 보내세요"라고 알려주는 이벤트
+        # [수정] 딕셔너리로 변환하여 전송
         yield {
             "event": "endpoint",
             "data": "/sse"
         }
         
-        # 초기화 메시지 전송
         async with mcp_server.create_initialization_message() as init_msg:
-            yield init_msg
+            # [수정] Pydantic 모델을 dict로 변환
+            yield init_msg.model_dump()
             
-        # 서버에서 나오는 메시지를 실시간으로 전송
         async with server_read:
             async for message in server_read:
-                yield message
+                # [수정] Pydantic 모델을 dict로 변환 (핵심 패치)
+                if hasattr(message, 'model_dump'):
+                    yield message.model_dump()
+                else:
+                    yield message
 
     return EventSourceResponse(event_generator())
 
-# [핵심] 모든 POST 요청을 처리하는 통합 핸들러
 async def forward_post_to_server(request: Request):
     global global_writer
     if global_writer is None:
+        # 연결 없이 POST만 오면 에러 처리
+        print("Error: No active SSE connection")
         return {"error": "No active SSE connection found. Please connect to GET /sse first."}
     
     try:
         data = await request.json()
         message = types.JSONRPCMessage.model_validate(data)
-        # 파이프를 통해 직접 밀어넣음
         await global_writer.send(message)
+        # 202 Accepted가 더 정확할 수 있으나 200도 무방
         return {"status": "accepted"}
     except Exception as e:
         print(f"POST Error: {e}")
         return {"error": str(e)}
 
-# PlayMCP가 찌르는 모든 구멍을 다 막아서 처리
 @app.post("/sse")
 async def handle_sse_post(request: Request):
     return await forward_post_to_server(request)
@@ -177,5 +172,5 @@ async def handle_root_post(request: Request):
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8000))
-    print(f"🚀 Starting Manual-Wired FastAPI MCP Server on port {port}...")
+    print(f"🚀 Starting Fixed FastAPI MCP Server on port {port}...")
     uvicorn.run(app, host="0.0.0.0", port=port)
