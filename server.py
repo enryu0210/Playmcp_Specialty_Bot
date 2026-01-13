@@ -4,6 +4,7 @@ import concurrent.futures
 from deep_translator import GoogleTranslator
 from functools import lru_cache # [수정 1] 캐싱 기능 추가
 import os
+import uvicorn
 
 # 번역 시간이 걸리므로 타임아웃 15초로 설정
 TIMEOUT_SECONDS = 15
@@ -108,10 +109,14 @@ def recommend_coffee(preference: str) -> str:
     return "알 수 없는 오류가 발생했습니다."
 
 if __name__ == "__main__":
-    # Render에서 제공하는 PORT 환경변수를 가져옴 (없으면 8000)
-    port = int(os.environ.get("PORT", 8000))
+    # Render가 주는 PORT 번호를 받습니다.
+    port = os.environ.get("PORT", "8000")
     
-    # 0.0.0.0으로 설정해야 외부에서 접속 가능
-    # transport='sse'를 명시하여 웹 서버 모드로 실행
+    # mcp.run()에 인자를 넣는 대신, 환경 변수로 Uvicorn 설정을 주입합니다.
+    os.environ["UVICORN_PORT"] = port
+    os.environ["UVICORN_HOST"] = "0.0.0.0"
+
     print(f"Starting MCP server on port {port}...")
-    mcp.run(transport='sse', host='0.0.0.0', port=port)
+    
+    # 인자 없이 실행하면 환경 변수 설정을 따라갑니다.
+    mcp.run(transport='sse')
