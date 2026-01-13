@@ -3,6 +3,7 @@ from coffee_tools import get_coffee_recommendations, get_criteria_info
 import concurrent.futures
 from deep_translator import GoogleTranslator
 from functools import lru_cache # [수정 1] 캐싱 기능 추가
+import os
 
 # 번역 시간이 걸리므로 타임아웃 15초로 설정
 TIMEOUT_SECONDS = 15
@@ -107,4 +108,10 @@ def recommend_coffee(preference: str) -> str:
     return "알 수 없는 오류가 발생했습니다."
 
 if __name__ == "__main__":
-    mcp.run()
+    # Render에서 제공하는 PORT 환경변수를 가져옴 (없으면 8000)
+    port = int(os.environ.get("PORT", 8000))
+    
+    # 0.0.0.0으로 설정해야 외부에서 접속 가능
+    # transport='sse'를 명시하여 웹 서버 모드로 실행
+    print(f"Starting MCP server on port {port}...")
+    mcp.run(transport='sse', host='0.0.0.0', port=port)
