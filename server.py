@@ -1,27 +1,27 @@
 import os
 import uvicorn
 
-# [중요] MCP나 다른 라이브러리를 임포트하기 전에, 
-# uvicorn 설정을 먼저 납치(Monkey Patch)해야 합니다.
-# 이 코드가 반드시 파일 최상단에 있어야 작동합니다.
+# [핵심 수정] uvicorn.run 함수가 아니라, uvicorn.Config 클래스 자체를 납치합니다.
+# FastMCP가 내부적으로 어떻게 실행하든, 이 설정 단계는 무조건 거치게 되어 있습니다.
 
-original_run = uvicorn.run
+original_config_init = uvicorn.Config.__init__
 
-def patched_run(*args, **kwargs):
-    # Render가 주는 PORT 번호 가져오기
-    current_port = int(os.environ.get("PORT", 8000))
-    print(f"🚀 [Patch] Render Port Detected: {current_port}")
-    print("🔥 [Patch] Forcing server to listen on 0.0.0.0")
+def patched_config_init(self, *args, **kwargs):
+    # Render 환경변수 포트 감지 (없으면 8000)
+    render_port = int(os.environ.get("PORT", 8000))
     
-    # 강제로 설정 주입
-    kwargs["host"] = "0.0.0.0"
-    kwargs["port"] = current_port
-    kwargs["log_level"] = "info"
+    print(f"🚀 [Deep Patch] Catching Uvicorn Configuration...")
+    print(f"🔥 Forcing Host: 0.0.0.0 | Port: {render_port}")
     
-    return original_run(*args, **kwargs)
+    # 여기서 강제로 설정을 덮어씌웁니다. (무조건 0.0.0.0 사용)
+    kwargs['host'] = "0.0.0.0"
+    kwargs['port'] = render_port
+    
+    # 원본 초기화 함수 실행
+    original_config_init(self, *args, **kwargs)
 
-# uvicorn.run을 우리가 만든 함수로 바꿔치기
-uvicorn.run = patched_run
+# Config 클래스의 생성자(__init__)를 우리가 만든 함수로 교체
+uvicorn.Config.__init__ = patched_config_init
 
 from mcp.server.fastmcp import FastMCP
 from coffee_tools import get_coffee_recommendations, get_criteria_info
