@@ -141,26 +141,29 @@ async def handle_sse(request: Request):
 
     return EventSourceResponse(event_generator())
 
-# [최종 핵심 수정] PlayMCP의 '정체 확인(Handshake)'에 올바른 명함 건네주기
+# [최종 완결판] PlayMCP의 모든 찔러보기(Handshake)에 완벽 대응하는 코드
 async def forward_post_to_server(request: Request):
     global global_writer
     
-    # [시나리오 1] 연결 전: PlayMCP가 "너 MCP 서버 맞아?"라고 물어볼 때 (등록 단계)
+    # [시나리오 1] 연결 전: PlayMCP가 등록을 위해 이것저것 물어볼 때
     if global_writer is None:
         try:
             data = await request.json()
             method = data.get("method")
+            msg_id = data.get("id") # 요청 ID (응답할 때 돌려줘야 함)
             
-            # 1. "스펙 내놔봐(initialize)" 라고 물으면 -> "여기 있습니다" (명함 제출)
+            # 1. "스펙 내놔봐(initialize)"
             if method == "initialize":
                 print("👋 [Check] PlayMCP Initialize Handshake.")
                 return {
                     "jsonrpc": "2.0",
-                    "id": data.get("id"),
+                    "id": msg_id,
                     "result": {
                         "protocolVersion": "2024-11-05",
                         "capabilities": {
-                            "tools": {}  # "저 도구 기능 있습니다"라고 신고
+                            "tools": {},
+                            "prompts": {},
+                            "resources": {}
                         },
                         "serverInfo": {
                             "name": "Coffee-Recommender",
@@ -169,15 +172,51 @@ async def forward_post_to_server(request: Request):
                     }
                 }
             
-            # 2. "살아있니(ping)?" 라고 물으면 -> "네(result: {})"
+            # 2. "살아있니(ping)?"
             if method == "ping":
                 return {
                     "jsonrpc": "2.0",
-                    "id": data.get("id"),
+                    "id": msg_id,
                     "result": {}
                 }
 
-            # 3. 그 외 단순 찔러보기
+            # 3. [추가됨] "도구 목록 줘봐(tools/list)" - 여기가 핵심!
+            if method == "tools/list":
+                print("🛠️ [Check] PlayMCP asking for Tools List.")
+                return {
+                    "jsonrpc": "2.0",
+                    "id": msg_id,
+                    "result": {
+                        "tools": [
+                            {
+                                "name": "show_criteria",
+                                "description": "커피 추천 기준과 로직(산미, 고소함 등)을 보여줍니다.",
+                                "inputSchema": {"type": "object", "properties": {}}
+                            },
+                            {
+                                "name": "recommend_coffee",
+                                "description": "사용자의 취향(예: 산미, 고소함, 과일향 등)을 입력받아 알맞은 커피를 추천합니다.",
+                                "inputSchema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "preference": {
+                                            "type": "string",
+                                            "description": "사용자의 커피 취향 (예: '산미 있는거', '고소한 맛')"
+                                        }
+                                    },
+                                    "required": ["preference"]
+                                }
+                            }
+                        ]
+                    }
+                }
+
+            # 4. "초기화 완료 알림(notifications/initialized)" - 응답 필요 없음
+            if method == "notifications/initialized":
+                print("✅ [Check] Client Initialized.")
+                return {"jsonrpc": "2.0", "method": "notifications/initialized", "params": {}}
+
+            # 그 외 (알 수 없는 요청은 그냥 OK 처리)
             print(f"👀 [Check] Unknown Probe: {method}")
             return {"status": "ok", "message": "Server is ready."}
             
