@@ -109,14 +109,24 @@ def recommend_coffee(preference: str) -> str:
     return "알 수 없는 오류가 발생했습니다."
 
 if __name__ == "__main__":
-    # Render가 주는 PORT 번호를 받습니다.
-    port = os.environ.get("PORT", "8000")
-    
-    # mcp.run()에 인자를 넣는 대신, 환경 변수로 Uvicorn 설정을 주입합니다.
-    os.environ["UVICORN_PORT"] = port
-    os.environ["UVICORN_HOST"] = "0.0.0.0"
+    # [핵심] mcp.run()이 강제로 127.0.0.1을 쓰는 것을 막기 위한 '강제 설정 덮어쓰기'
+    original_run = uvicorn.run
 
-    print(f"Starting MCP server on port {port}...")
-    
-    # 인자 없이 실행하면 환경 변수 설정을 따라갑니다.
+    def patched_run(*args, **kwargs):
+        # Render가 부여한 포트 번호 가져오기
+        current_port = int(os.environ.get("PORT", 8000))
+        
+        print(f"🚀 Render Port Detected: {current_port}")
+        print("🔥 Forcing server to listen on 0.0.0.0 (Public Access)")
+        
+        # 강제로 설정 주입 (라이브러리 기본값 무시)
+        kwargs["host"] = "0.0.0.0"
+        kwargs["port"] = current_port
+        
+        return original_run(*args, **kwargs)
+
+    # uvicorn의 실행 함수를 우리가 만든 함수로 교체
+    uvicorn.run = patched_run
+
+    # 서버 실행 (이제 위에서 설정한 대로 0.0.0.0으로 뜹니다)
     mcp.run(transport='sse')
