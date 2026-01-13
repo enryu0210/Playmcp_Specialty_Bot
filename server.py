@@ -141,18 +141,21 @@ async def handle_sse(request: Request):
 
     return EventSourceResponse(event_generator())
 
+# [핵심 수정] PlayMCP의 '찔러보기(Connection Check)'를 통과시키는 코드
 async def forward_post_to_server(request: Request):
     global global_writer
-    if global_writer is None:
-        # 연결 없이 POST만 오면 에러 처리
-        print("Error: No active SSE connection")
-        return {"error": "No active SSE connection found. Please connect to GET /sse first."}
     
+    # 1. 연결 없이 POST가 왔을 때 (등록 확인용)
+    if global_writer is None:
+        print("👀 [Check] PlayMCP Connection Probe detected.")
+        # 에러("error") 대신 정상 응답("ok")을 보내서 등록을 통과시킵니다.
+        return {"status": "ok", "message": "Server is ready. Waiting for GET connection."}
+    
+    # 2. 실제 연결 후 메시지가 왔을 때
     try:
         data = await request.json()
         message = types.JSONRPCMessage.model_validate(data)
         await global_writer.send(message)
-        # 202 Accepted가 더 정확할 수 있으나 200도 무방
         return {"status": "accepted"}
     except Exception as e:
         print(f"POST Error: {e}")
