@@ -1,10 +1,33 @@
+import os
+import uvicorn
+
+# [중요] MCP나 다른 라이브러리를 임포트하기 전에, 
+# uvicorn 설정을 먼저 납치(Monkey Patch)해야 합니다.
+# 이 코드가 반드시 파일 최상단에 있어야 작동합니다.
+
+original_run = uvicorn.run
+
+def patched_run(*args, **kwargs):
+    # Render가 주는 PORT 번호 가져오기
+    current_port = int(os.environ.get("PORT", 8000))
+    print(f"🚀 [Patch] Render Port Detected: {current_port}")
+    print("🔥 [Patch] Forcing server to listen on 0.0.0.0")
+    
+    # 강제로 설정 주입
+    kwargs["host"] = "0.0.0.0"
+    kwargs["port"] = current_port
+    kwargs["log_level"] = "info"
+    
+    return original_run(*args, **kwargs)
+
+# uvicorn.run을 우리가 만든 함수로 바꿔치기
+uvicorn.run = patched_run
+
 from mcp.server.fastmcp import FastMCP
 from coffee_tools import get_coffee_recommendations, get_criteria_info
 import concurrent.futures
 from deep_translator import GoogleTranslator
 from functools import lru_cache # [수정 1] 캐싱 기능 추가
-import os
-import uvicorn
 
 # 번역 시간이 걸리므로 타임아웃 15초로 설정
 TIMEOUT_SECONDS = 15
@@ -109,24 +132,5 @@ def recommend_coffee(preference: str) -> str:
     return "알 수 없는 오류가 발생했습니다."
 
 if __name__ == "__main__":
-    # [핵심] mcp.run()이 강제로 127.0.0.1을 쓰는 것을 막기 위한 '강제 설정 덮어쓰기'
-    original_run = uvicorn.run
-
-    def patched_run(*args, **kwargs):
-        # Render가 부여한 포트 번호 가져오기
-        current_port = int(os.environ.get("PORT", 8000))
-        
-        print(f"🚀 Render Port Detected: {current_port}")
-        print("🔥 Forcing server to listen on 0.0.0.0 (Public Access)")
-        
-        # 강제로 설정 주입 (라이브러리 기본값 무시)
-        kwargs["host"] = "0.0.0.0"
-        kwargs["port"] = current_port
-        
-        return original_run(*args, **kwargs)
-
-    # uvicorn의 실행 함수를 우리가 만든 함수로 교체
-    uvicorn.run = patched_run
-
-    # 서버 실행 (이제 위에서 설정한 대로 0.0.0.0으로 뜹니다)
+    print("☕ Starting Coffee MCP Server...")
     mcp.run(transport='sse')
