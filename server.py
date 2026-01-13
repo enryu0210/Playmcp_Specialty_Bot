@@ -141,17 +141,51 @@ async def handle_sse(request: Request):
 
     return EventSourceResponse(event_generator())
 
-# [핵심 수정] PlayMCP의 '찔러보기(Connection Check)'를 통과시키는 코드
+# [최종 핵심 수정] PlayMCP의 '정체 확인(Handshake)'에 올바른 명함 건네주기
 async def forward_post_to_server(request: Request):
     global global_writer
     
-    # 1. 연결 없이 POST가 왔을 때 (등록 확인용)
+    # [시나리오 1] 연결 전: PlayMCP가 "너 MCP 서버 맞아?"라고 물어볼 때 (등록 단계)
     if global_writer is None:
-        print("👀 [Check] PlayMCP Connection Probe detected.")
-        # 에러("error") 대신 정상 응답("ok")을 보내서 등록을 통과시킵니다.
-        return {"status": "ok", "message": "Server is ready. Waiting for GET connection."}
+        try:
+            data = await request.json()
+            method = data.get("method")
+            
+            # 1. "스펙 내놔봐(initialize)" 라고 물으면 -> "여기 있습니다" (명함 제출)
+            if method == "initialize":
+                print("👋 [Check] PlayMCP Initialize Handshake.")
+                return {
+                    "jsonrpc": "2.0",
+                    "id": data.get("id"),
+                    "result": {
+                        "protocolVersion": "2024-11-05",
+                        "capabilities": {
+                            "tools": {}  # "저 도구 기능 있습니다"라고 신고
+                        },
+                        "serverInfo": {
+                            "name": "Coffee-Recommender",
+                            "version": "1.0"
+                        }
+                    }
+                }
+            
+            # 2. "살아있니(ping)?" 라고 물으면 -> "네(result: {})"
+            if method == "ping":
+                return {
+                    "jsonrpc": "2.0",
+                    "id": data.get("id"),
+                    "result": {}
+                }
+
+            # 3. 그 외 단순 찔러보기
+            print(f"👀 [Check] Unknown Probe: {method}")
+            return {"status": "ok", "message": "Server is ready."}
+            
+        except Exception as e:
+            print(f"Probe Error: {e}")
+            return {"error": str(e)}
     
-    # 2. 실제 연결 후 메시지가 왔을 때
+    # [시나리오 2] 연결 후: 실제 채팅 메시지 처리
     try:
         data = await request.json()
         message = types.JSONRPCMessage.model_validate(data)
