@@ -1,6 +1,9 @@
 import pandas as pd
+import os
 
-DATA_FILE = 'coffee_clean.csv'
+# [수정 1] 절대 경로 설정 (Render 배포 시 필수)
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+DATA_FILE = os.path.join(BASE_DIR, 'coffee_clean.csv')
 
 MAJOR_COUNTRIES = [
     'Ethiopia', 'Kenya', 'Colombia', 'Brazil', 'Panama', 'Guatemala', 
@@ -8,10 +11,14 @@ MAJOR_COUNTRIES = [
     'Mexico', 'Uganda', 'Tanzania', 'Nicaragua', 'Yemen', 'Sumatra', 'India', 'Vietnam'
 ]
 
-def load_data():
-    """데이터 파일 로드 (인코딩 에러 방지 포함)"""
+# [수정 2] 전역 변수에 데이터 미리 로드
+def load_data_once():
+    """서버 시작 시 데이터를 한 번만 로드"""
+    if not os.path.exists(DATA_FILE):
+        print(f"Error: 파일이 없습니다 - {DATA_FILE}")
+        return None
+
     try:
-        # 윈도우 한글 인코딩 호환 시도
         try:
             df = pd.read_csv(DATA_FILE, encoding='utf-8')
         except UnicodeDecodeError:
@@ -22,13 +29,11 @@ def load_data():
 
         df['desc_1'] = df['desc_1'].fillna('').astype(str)
         
-        # [중요] 시각화를 위한 맛 점수 컬럼 숫자 변환
         cols_to_numeric = ['acid', 'body', 'flavor', 'aftertaste', 'aroma', 'rating']
         for col in cols_to_numeric:
             if col in df.columns:
                 df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
 
-        # 국가명 추출
         def extract_country(origin_text):
             if not isinstance(origin_text, str): return "Other"
             for country in MAJOR_COUNTRIES:
@@ -37,11 +42,15 @@ def load_data():
             return "Other"
             
         df['country'] = df['origin'].apply(extract_country)
+        print("✅ Data Loaded Successfully!")
         return df
 
     except Exception as e:
         print(f"DEBUG: Data Load Error: {e}")
         return None
+
+# 전역 변수로 선언 (최초 1회 실행)
+GLOBAL_DF = load_data_once()
 
 def get_criteria_info() -> str:
     """분류 기준 텍스트 반환"""
@@ -66,7 +75,7 @@ def get_coffee_recommendations(preference: str):
         # 길이가 너무 길면(복합 질문이면) 무시하고, 짧은 질문("기준 알려줘")일 때만 작동
         return {"type": "info", "content": get_criteria_info()}
 
-    df = load_data()
+    df = load_data_once()
     if df is None:
         return "Error: 데이터 파일을 찾을 수 없습니다."
 

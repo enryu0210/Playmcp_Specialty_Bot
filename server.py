@@ -2,6 +2,7 @@ from mcp.server.fastmcp import FastMCP
 from coffee_tools import get_coffee_recommendations, get_criteria_info
 import concurrent.futures
 from deep_translator import GoogleTranslator
+from functools import lru_cache # [수정 1] 캐싱 기능 추가
 
 # 번역 시간이 걸리므로 타임아웃 15초로 설정
 TIMEOUT_SECONDS = 15
@@ -17,6 +18,7 @@ TERM_DICT = {
 }
 
 # 2. 동적 번역 함수 (긴 문장/설명 번역용)
+@lru_cache(maxsize=100)
 def translate_text_dynamic(text: str) -> str:
     """deep-translator를 사용하여 특징(문장)을 번역"""
     if not text: return ""
