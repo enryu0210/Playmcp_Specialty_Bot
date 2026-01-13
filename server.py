@@ -1,11 +1,12 @@
 import os
 import uvicorn
+import asyncio
 from fastapi import FastAPI, Request
-from fastapi.middleware.cors import CORSMiddleware # [핵심] 보안 설정 모듈
+from fastapi.middleware.cors import CORSMiddleware
 from sse_starlette.sse import EventSourceResponse
-from mcp.server.sse import SseServerTransport
 from mcp.server import Server
 import mcp.types as types
+from anyio import create_memory_object_stream
 from coffee_tools import get_coffee_recommendations, get_criteria_info
 import concurrent.futures
 
@@ -14,15 +15,18 @@ app = FastAPI()
 mcp_server = Server("Coffee-Recommender")
 TIMEOUT_SECONDS = 15
 
-# [핵심 해결책] CORS 미들웨어 추가
-# PlayMCP(외부)가 내 서버의 응답을 읽을 수 있도록 허용하는 '통행증'입니다.
+# [보안 설정] PlayMCP가 접속할 수 있도록 허용 (CORS)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # 모든 주소에서 접속 허용 (카카오 포함)
+    allow_origins=["*"],
     allow_credentials=True,
-    allow_methods=["*"],  # 모든 HTTP 메서드(GET, POST 등) 허용
-    allow_headers=["*"],  # 모든 헤더 허용
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
+
+# [핵심] GET(연결)과 POST(전송)를 이어주는 '전역 연결 고리'
+# 봇(단일 인스턴스) 환경이므로 전역 변수로 스트림 입구를 관리합니다.
+global_writer = None
 
 # --- [2. 도구(Tool) 정의] ---
 @mcp_server.list_tools()
@@ -89,7 +93,7 @@ async def handle_call_tool(
 
     raise ValueError(f"Unknown tool: {name}")
 
-# --- [4. PlayMCP 연결 경로 설정 (CORS + Path 완벽 대응)] ---
+# --- [4. 수동 배관 작업 (Wiring) - 에러 원천 차단] ---
 
 @app.get("/")
 async def handle_root():
@@ -97,32 +101,81 @@ async def handle_root():
 
 @app.get("/sse")
 async def handle_sse(request: Request):
-    """MCP 연결 요청 처리 (GET) - 듣기"""
-    async with mcp_server.create_initialization_message() as init_msg:
-        async def event_generator():
-            yield init_msg
-            async for message in mcp_server.list_tools():
-                yield message
-            
-            # [중요] POST 요청은 '/sse'로 다시 보내라고 PlayMCP에게 알려줍니다.
-            # (원래는 /messages지만, PlayMCP가 /sse로 쏘는 경우를 대비해 통일)
-            transport = SseServerTransport("/sse")
-            
-            async with transport.connect(request.scope, request.receive, request._send) as (read_stream, write_stream):
-                await mcp_server.run(read_stream, write_stream, mcp_server.create_initialization_options())
-        
-        return EventSourceResponse(event_generator())
+    """MCP 연결 요청 처리 (GET) - 듣기 모드"""
+    global global_writer
+    
+    # 1. 서버와 통신할 파이프(Stream) 직접 생성
+    # client_read, client_write: 클라이언트 -> 서버 (POST 데이터 이동 통로)
+    # server_read, server_write: 서버 -> 클라이언트 (SSE 이벤트 이동 통로)
+    client_write, client_read = create_memory_object_stream(10)
+    server_write, server_read = create_memory_object_stream(10)
+    
+    # 2. POST 요청이 오면 데이터를 넣을 입구를 전역 변수에 저장
+    global_writer = client_write
 
-# [핵심] PlayMCP가 POST를 /sse로 보내든 /messages로 보내든 다 처리함
+    # 3. 백그라운드에서 MCP 서버 실행 (통신 시작)
+    async def run_mcp_server():
+        try:
+            # 여기서 server.run을 직접 돌립니다. (process_request 같은거 안 씀)
+            await mcp_server.run(
+                client_read, 
+                server_write, 
+                mcp_server.create_initialization_options()
+            )
+        except Exception as e:
+            print(f"Server Error: {e}")
+
+    asyncio.create_task(run_mcp_server())
+
+    # 4. SSE 이벤트 생성기
+    async def event_generator():
+        # PlayMCP에게 "여기로 데이터 보내세요"라고 알려주는 이벤트
+        yield {
+            "event": "endpoint",
+            "data": "/sse"
+        }
+        
+        # 초기화 메시지 전송
+        async with mcp_server.create_initialization_message() as init_msg:
+            yield init_msg
+            
+        # 서버에서 나오는 메시지를 실시간으로 전송
+        async with server_read:
+            async for message in server_read:
+                yield message
+
+    return EventSourceResponse(event_generator())
+
+# [핵심] 모든 POST 요청을 처리하는 통합 핸들러
+async def forward_post_to_server(request: Request):
+    global global_writer
+    if global_writer is None:
+        return {"error": "No active SSE connection found. Please connect to GET /sse first."}
+    
+    try:
+        data = await request.json()
+        message = types.JSONRPCMessage.model_validate(data)
+        # 파이프를 통해 직접 밀어넣음
+        await global_writer.send(message)
+        return {"status": "accepted"}
+    except Exception as e:
+        print(f"POST Error: {e}")
+        return {"error": str(e)}
+
+# PlayMCP가 찌르는 모든 구멍을 다 막아서 처리
 @app.post("/sse")
 async def handle_sse_post(request: Request):
-    return await mcp_server.process_request(request)
+    return await forward_post_to_server(request)
 
 @app.post("/messages")
 async def handle_messages(request: Request):
-    return await mcp_server.process_request(request)
+    return await forward_post_to_server(request)
+
+@app.post("/")
+async def handle_root_post(request: Request):
+    return await forward_post_to_server(request)
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8000))
-    print(f"🚀 Starting CORS-Enabled FastAPI MCP Server on port {port}...")
+    print(f"🚀 Starting Manual-Wired FastAPI MCP Server on port {port}...")
     uvicorn.run(app, host="0.0.0.0", port=port)
