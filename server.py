@@ -127,6 +127,17 @@ async def handle_messages(request: Request):
     """MCP 메시지 처리 (POST)"""
     return await mcp_server.process_request(request)
 
+# [추가됨] PlayMCP가 /sse 주소로 POST를 날려도 받아주도록 처리
+@app.post("/sse")
+async def handle_sse_post(request: Request):
+    """PlayMCP 호환성: /sse로 들어오는 POST도 처리"""
+    return await mcp_server.process_request(request)
+
+# [추가됨] 혹시 메인 주소(/)로 POST를 날려도 처리
+@app.post("/")
+async def handle_root_post(request: Request):
+    return await mcp_server.process_request(request)
+
 if __name__ == "__main__":
     # Render 환경 변수 포트 사용
     port = int(os.environ.get("PORT", 8000))
