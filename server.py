@@ -84,9 +84,9 @@ async def process_tool_call(name: str, arguments: dict) -> str:
                             c_desc = coffee.get('desc', '')[:100]
                             output.append(f"- {c_name_item} ({c_rating}점)")
                             output.append(f"  특징: {c_desc}...")
-                            output.append(coffee.get('aroma'))
-                            output.append(coffee.get('acid'))
-                            output.append(coffee.get('body'))
+                            output.append(str(coffee.get('aroma')))
+                            output.append(str(coffee.get('acid')))
+                            output.append(str(coffee.get('body')))
                             """output.append(f"아로마 : {create_star_rating(coffee.get('aroma'))}")
                             output.append(f"산미 : {create_star_rating(coffee.get('acid'))}")
                             output.append(f"바디 : {create_star_rating(coffee.get('body'))}")
