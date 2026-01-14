@@ -28,16 +28,16 @@ global_writer = None
 
 # --- [2. 도구(Tool) 실행 로직 분리 (핵심)] ---
 # 라이브러리 거치지 않고 직접 실행할 함수입니다.
-def create_star_rating(score: float) -> str:
-    """점수를 별점(★)으로 시각화"""
-    if not score: return "정보 없음"
-    normalized = score / 2
-    full_stars = int(normalized)
-    has_half = (normalized - full_stars) >= 0.25
-    
-    stars = "★" * full_stars
-    if has_half: stars += "☆"
-    return f"{stars} ({normalized}점)"
+def create_star_rating(score) -> str:
+    try:
+        s = float(score)
+        if s == 0: return "정보 없음"
+        normalized = s / 2
+        full = int(normalized)
+        half = (normalized - full) >= 0.25
+        return "★" * full + ("☆" if half else "") + f" ({normalized}점)"
+    except:
+        return "정보 없음"
 
 async def process_tool_call(name: str, arguments: dict) -> str:
     try:
@@ -81,19 +81,14 @@ async def process_tool_call(name: str, arguments: dict) -> str:
                             c_name_item = coffee.get('name', 'Unknown')
                             c_rating = coffee.get('rating', '0')
                             c_desc = coffee.get('desc', '')[:100]
-                            c_acid = coffee.get('acid', 0)
-                            c_aroma = coffee.get('aroma', 0)
-                            c_body = coffee.get('body', 0)
-                            c_flavor = coffee.get('flavor', 0)
-                            c_aftertaste = coffee.get('aftertaste', 0)
                             output.append(f"- {c_name_item} ({c_rating}점)")
                             output.append(f"  특징: {c_desc}...")
                             output.append("  └ 📊 맛 지표:")
-                            output.append(f"아로마 : {create_star_rating(c_aroma)}")
-                            output.append(f"산미 : {create_star_rating(c_acid)}")
-                            output.append(f"바디 : {create_star_rating(c_body)}")
-                            output.append(f"향미 : {create_star_rating(c_flavor)}")
-                            output.append(f"후미 : {create_star_rating(c_aftertaste)}")
+                            output.append(f"아로마 : {create_star_rating(coffee.get('aroma'))}")
+                            output.append(f"산미 : {create_star_rating(coffee.get('acid'))}")
+                            output.append(f"바디 : {create_star_rating(coffee.get('body'))}")
+                            output.append(f"향미 : {create_star_rating(coffee.get('flavor'))}")
+                            output.append(f"후미 : {create_star_rating(coffee.get('aftertaste'))}")
                     return "\n".join(output)
                 else:
                     return result.get("content", "내용 없음")

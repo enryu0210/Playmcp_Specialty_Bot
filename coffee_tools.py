@@ -168,11 +168,11 @@ def get_coffee_recommendations(preference: str):
                 "rating": row['rating'],
                 "desc": row['desc_1'],
                 # [중요] 시각화용 데이터 전달
-                "aroma" : row['aroma'],
-                "acid": row['acid'],
-                "body": row['body'],
-                "flavor": row['flavor'],
-                "aftertaste": row['aftertaste']
+                "aroma": row.get('aroma', 0),
+                "acid": row.get('acid', 0),
+                "body": row.get('body', 0),
+                "flavor": row.get('flavor', 0),
+                "aftertaste": row.get('aftertaste', 0)
             })
         results["countries"].append({"country_name": country, "coffees": coffee_list})
 
