@@ -167,7 +167,7 @@ async def forward_post_to_server(request: Request):
             return {
                 "jsonrpc": "2.0", "id": msg_id,
                 "result": {
-                    "protocolVersion": "2024-11-05",
+                    "protocolVersion": "2025-03-26",
                     "capabilities": {"tools": {}, "prompts": {}, "resources": {}},
                     "serverInfo": {"name": "Coffee-Recommender", "version": "1.0"}
                 }
