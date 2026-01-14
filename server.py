@@ -28,18 +28,6 @@ global_writer = None
 
 # --- [2. 도구(Tool) 실행 로직 분리 (핵심)] ---
 # 라이브러리 거치지 않고 직접 실행할 함수입니다.
-"""def create_star_rating(score) -> str:
-    try:
-        s = float(score)
-        if s == 0: return "정보 없음"
-        normalized = s / 2
-        full = int(normalized)
-        half = (normalized - full) >= 0.25
-        return "★" * full + ("☆" if half else "") + f" ({normalized}점)"
-    except:
-        return "정보 없음"
-        """
-
 async def process_tool_call(name: str, arguments: dict) -> str:
     try:
         if name == "show_criteria":
@@ -84,14 +72,6 @@ async def process_tool_call(name: str, arguments: dict) -> str:
                             c_desc = coffee.get('desc', '')[:100]
                             output.append(f"- {c_name_item} ({c_rating}점)")
                             output.append(f"  특징: {c_desc}...")
-                            output.append(str(coffee.get('aroma')))
-                            output.append(str(coffee.get('acid')))
-                            output.append(str(coffee.get('body')))
-                            """output.append(f"아로마 : {create_star_rating(coffee.get('aroma'))}")
-                            output.append(f"산미 : {create_star_rating(coffee.get('acid'))}")
-                            output.append(f"바디 : {create_star_rating(coffee.get('body'))}")
-                            output.append(f"향미 : {create_star_rating(coffee.get('flavor'))}")
-                            output.append(f"후미 : {create_star_rating(coffee.get('aftertaste'))}")"""
                     return "\n".join(output)
                 else:
                     return result.get("content", "내용 없음")
