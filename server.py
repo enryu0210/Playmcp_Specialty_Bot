@@ -70,8 +70,10 @@ async def process_tool_call(name: str, arguments: dict) -> str:
                             c_name_item = coffee.get('name', 'Unknown')
                             c_rating = coffee.get('rating', '0')
                             c_desc = coffee.get('desc', '')[:100]
+                            c_acid = coffee.get('acid', '')
                             output.append(f"- {c_name_item} ({c_rating}점)")
                             output.append(f"  특징: {c_desc}...")
+                            output.append(f"  산미 : {c_acid}")
                     return "\n".join(output)
                 else:
                     return result.get("content", "내용 없음")
