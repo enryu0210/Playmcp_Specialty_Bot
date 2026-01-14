@@ -28,7 +28,7 @@ global_writer = None
 
 # --- [2. 도구(Tool) 실행 로직 분리 (핵심)] ---
 # 라이브러리 거치지 않고 직접 실행할 함수입니다.
-async def create_star_rating(score: float) -> str:
+def create_star_rating(score: float) -> str:
     """점수를 별점(★)으로 시각화"""
     if not score: return "정보 없음"
     normalized = score / 2
